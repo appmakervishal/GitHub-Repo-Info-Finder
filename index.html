@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>GitHub Repo Info Finder</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
+
+  body {
+    font-family: 'Inter', sans-serif;
+    background: #121212;
+    color: #eee;
+    margin: 0;
+    padding: 2em;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 100vh;
+  }
+
+  h1 {
+    margin-bottom: 1em;
+    font-weight: 600;
+    color: #61dafb;
+    text-align: center;
+    text-shadow: 0 0 8px #61dafb88;
+  }
+
+  input, button {
+    font-size: 1rem;
+    padding: 0.75em 1em;
+    border-radius: 8px;
+    border: none;
+    outline: none;
+    width: 100%;
+    max-width: 600px;
+    margin-bottom: 1em;
+    box-sizing: border-box;
+    transition: box-shadow 0.3s ease;
+  }
+
+  input {
+    background: #222;
+    color: #eee;
+    box-shadow: inset 0 0 6px #000;
+  }
+
+  input:focus {
+    box-shadow: 0 0 8px #61dafb;
+  }
+
+  button {
+    background: #61dafb;
+    color: #121212;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 4px 8px #007acc88;
+  }
+
+  button:hover {
+    background: #52c0f5;
+    box-shadow: 0 6px 12px #007acccc;
+  }
+
+  #output {
+    background: #222;
+    border-radius: 12px;
+    max-width: 600px;
+    width: 100%;
+    min-height: 160px;
+    padding: 1em 1.5em;
+    font-family: monospace;
+    white-space: pre-wrap;
+    color: #ddd;
+    box-shadow: 0 0 10px transparent;
+    opacity: 0;
+    transform: translateY(20px);
+    animation: fadeInUp 0.6s forwards ease-out;
+  }
+
+  a {
+    color: #61dafb;
+    text-decoration: none;
+  }
+  a:hover {
+    text-decoration: underline;
+  }
+
+  /* Animation keyframes */
+  @keyframes fadeInUp {
+    to {
+      opacity: 1;
+      transform: translateY(0);
+      box-shadow: 0 0 10px #61dafb66;
+    }
+  }
+</style>
+</head>
+<body>
+<h1>GitHub Repo Info Finder</h1>
+<input id="urlInput" placeholder="Enter GitHub repo URL (e.g. https://github.com/owner/repo)" />
+<button onclick="fetchGitHubInfo()">Get Repo Info</button>
+<pre id="output">Enter a GitHub repo URL above.</pre>
+
+<script>
+function isGitHubRepo(url) {
+  try {
+    const u = new URL(url);
+    if (u.hostname.toLowerCase() !== 'github.com') return false;
+    const parts = u.pathname.split('/').filter(Boolean);
+    return parts.length >= 2 ? parts.slice(0, 2) : false;
+  } catch {
+    return false;
+  }
+}
+
+function formatDate(dateStr) {
+  return new Date(dateStr).toLocaleDateString();
+}
+
+async function urlExists(url) {
+  try {
+    const res = await fetch(url, { method: 'HEAD' });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function fetchGitHubInfo() {
+  const output = document.getElementById('output');
+  output.style.animation = 'none'; // reset animation
+  void output.offsetWidth; // trigger reflow to restart animation
+  output.style.animation = null;
+
+  const url = document.getElementById('urlInput').value.trim();
+  if (!url) {
+    output.textContent = 'Please enter a URL.';
+    return;
+  }
+  const repoParts = isGitHubRepo(url);
+  if (!repoParts) {
+    output.textContent = 'Only GitHub repository URLs are supported in this demo.';
+    return;
+  }
+  const [owner, repo] = repoParts;
+  output.textContent = 'Fetching GitHub repo info...';
+  try {
+    const res = await fetch(`https://api.github.com/repos/${owner}/${repo}`);
+    if (!res.ok) throw new Error('Repository not found or API error.');
+    const data = await res.json();
+
+    let pagesUrl = '';
+    if (data.homepage && data.homepage.startsWith('http')) {
+      pagesUrl = data.homepage;
+    } else {
+      // Try GitHub Pages default URLs:
+      // 1) User/Org page: https://owner.github.io
+      // 2) Project page: https://owner.github.io/repo
+      const userPage = `https://${owner}.github.io`;
+      const projectPage = `${userPage}/${repo}`;
+
+      // Check which one exists (HEAD request)
+      if (await urlExists(projectPage + '/')) {
+        pagesUrl = projectPage;
+      } else if (await urlExists(userPage + '/')) {
+        pagesUrl = userPage;
+      }
+    }
+
+    output.textContent =
+      `Repository: ${data.full_name}\n` +
+      `Owner: ${data.owner.login}\n` +
+      `Description: ${data.description || 'N/A'}\n` +
+      `Stars: ${data.stargazers_count}\n` +
+      `Forks: ${data.forks_count}\n` +
+      `Open Issues: ${data.open_issues_count}\n` +
+      `License: ${data.license ? data.license.name : 'N/A'}\n` +
+      `Created At: ${formatDate(data.created_at)}\n` +
+      `Last Updated: ${formatDate(data.updated_at)}\n` +
+      `Repo URL: ${data.html_url}\n` +
+      (pagesUrl ? `GitHub Pages URL: ${pagesUrl}` : 'GitHub Pages URL: Not found');
+  } catch (e) {
+    output.textContent = 'Failed to fetch repo info: ' + e.message;
+  }
+}
+</script>
+</body>
+</html>
